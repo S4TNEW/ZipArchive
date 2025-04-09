@@ -15,7 +15,7 @@
 #include <stdio.h> /* rename */
 #include <errno.h>
 #if defined(HAVE_ICONV)
-#include <iconv.h>
+#  include <iconv.h>
 #endif
 #include <string.h>
 #include <sys/types.h>
@@ -40,14 +40,14 @@
 /***************************************************************************/
 
 #if defined(HAVE_ICONV)
-uint8_t *mz_os_utf8_string_create(const char *string, int32_t encoding) {
+char *mz_os_utf8_string_create(const char *string, int32_t encoding) {
     iconv_t cd;
     const char *from_encoding = NULL;
     size_t result = 0;
     size_t string_length = 0;
     size_t string_utf8_size = 0;
-    uint8_t *string_utf8 = NULL;
-    uint8_t *string_utf8_ptr = NULL;
+    char *string_utf8 = NULL;
+    char *string_utf8_ptr = NULL;
 
     if (!string)
         return NULL;
@@ -71,12 +71,11 @@ uint8_t *mz_os_utf8_string_create(const char *string, int32_t encoding) {
 
     string_length = strlen(string);
     string_utf8_size = string_length * 2;
-    string_utf8 = (uint8_t *)calloc((int32_t)(string_utf8_size + 1), sizeof(char));
+    string_utf8 = (char *)calloc((int32_t)(string_utf8_size + 1), sizeof(char));
     string_utf8_ptr = string_utf8;
 
     if (string_utf8) {
-        result = iconv(cd, (char **)&string, &string_length,
-                (char **)&string_utf8_ptr, &string_utf8_size);
+        result = iconv(cd, (char **)&string, &string_length, (char **)&string_utf8_ptr, &string_utf8_size);
     }
 
     iconv_close(cd);
@@ -89,12 +88,12 @@ uint8_t *mz_os_utf8_string_create(const char *string, int32_t encoding) {
     return string_utf8;
 }
 #else
-uint8_t *mz_os_utf8_string_create(const char *string, int32_t encoding) {
-    return (uint8_t *)strdup(string);
+char *mz_os_utf8_string_create(const char *string, int32_t encoding) {
+    return strdup(string);
 }
 #endif
 
-void mz_os_utf8_string_delete(uint8_t **string) {
+void mz_os_utf8_string_delete(char **string) {
     if (string) {
         free(*string);
         *string = NULL;
@@ -147,7 +146,7 @@ int32_t mz_os_rand(uint8_t *buf, int32_t size) {
 
     /* Ensure different random header each time */
     if (++calls == 1) {
-        #define PI_SEED 3141592654UL
+#  define PI_SEED 3141592654UL
         srand((unsigned)(time(NULL) ^ PI_SEED));
     }
 
@@ -272,11 +271,11 @@ int32_t mz_os_make_dir(const char *path) {
     return MZ_OK;
 }
 
-DIR* mz_os_open_dir(const char *path) {
+DIR *mz_os_open_dir(const char *path) {
     return opendir(path);
 }
 
-struct dirent* mz_os_read_dir(DIR *dir) {
+struct dirent *mz_os_read_dir(DIR *dir) {
     if (!dir)
         return NULL;
     return readdir(dir);

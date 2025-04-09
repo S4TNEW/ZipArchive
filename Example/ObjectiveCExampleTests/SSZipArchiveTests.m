@@ -27,6 +27,10 @@
 - (NSString *)_sanitizedPath;
 @end
 
+@interface SSZipArchive (XCTest)
++ (NSDate *)_dateWithMSDOSFormat:(UInt32)msdosDateTime;
+@end
+
 @implementation SSZipArchiveTests
 
 int twentyMB = 20 * 1024 * 1024;
@@ -121,14 +125,14 @@ int twentyMB = 20 * 1024 * 1024;
 }
 
 - (void)testMultipleZippping{
-    NSArray *inputPaths = @[[[NSBundle bundleForClass: [self class]]pathForResource:@"0" ofType:@"m4a"],
-                            [[NSBundle bundleForClass: [self class]]pathForResource:@"1" ofType:@"m4a"],
-                            [[NSBundle bundleForClass: [self class]]pathForResource:@"2" ofType:@"m4a"],
-                            [[NSBundle bundleForClass: [self class]]pathForResource:@"3" ofType:@"m4a"],
-                            [[NSBundle bundleForClass: [self class]]pathForResource:@"4" ofType:@"m4a"],
-                            [[NSBundle bundleForClass: [self class]]pathForResource:@"5" ofType:@"m4a"],
-                            [[NSBundle bundleForClass: [self class]]pathForResource:@"6" ofType:@"m4a"],
-                            [[NSBundle bundleForClass: [self class]]pathForResource:@"7" ofType:@"m4a"]
+    NSArray *inputPaths = @[[[NSBundle bundleForClass:[self class]] pathForResource:@"0" ofType:@"m4a"],
+                            [[NSBundle bundleForClass:[self class]] pathForResource:@"1" ofType:@"m4a"],
+                            [[NSBundle bundleForClass:[self class]] pathForResource:@"2" ofType:@"m4a"],
+                            [[NSBundle bundleForClass:[self class]] pathForResource:@"3" ofType:@"m4a"],
+                            [[NSBundle bundleForClass:[self class]] pathForResource:@"4" ofType:@"m4a"],
+                            [[NSBundle bundleForClass:[self class]] pathForResource:@"5" ofType:@"m4a"],
+                            [[NSBundle bundleForClass:[self class]] pathForResource:@"6" ofType:@"m4a"],
+                            [[NSBundle bundleForClass:[self class]] pathForResource:@"7" ofType:@"m4a"]
                             ];
     NSString *outputPath = [self _cachesPath:@"Zipped"];
 
@@ -162,6 +166,19 @@ int twentyMB = 20 * 1024 * 1024;
 
     testPath = [outputPath stringByAppendingPathComponent:@"LICENSE"];
     XCTAssertTrue([fileManager fileExistsAtPath:testPath], @"LICENSE unzipped");
+}
+
+- (void)testUnzippingIncorrectNumberEntries {
+    NSString *zipPath = [[NSBundle bundleForClass:[self class]] pathForResource:@"IncorrectNumberEntries" ofType:@"zip"];
+    NSString *outputPath = [self _cachesPath:@"IncorrectNumberEntries"];
+
+    id<SSZipArchiveDelegate> delegate = [ProgressDelegate new];
+    BOOL success = [SSZipArchive unzipFileAtPath:zipPath toDestination:outputPath delegate:delegate];
+    XCTAssertTrue(success, @"unzip failure");
+
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *testPath = [outputPath stringByAppendingPathComponent:@"hello"];
+    XCTAssertTrue([fileManager fileExistsAtPath:testPath], @"hello unzipped");
 }
 
 - (void)testSmallFileUnzipping {
@@ -221,6 +238,14 @@ int twentyMB = 20 * 1024 * 1024;
     XCTAssertTrue(619 == [delegate->progressEvents[1] intValue]);
     XCTAssertTrue(1114 == [delegate->progressEvents[2] intValue]);
     XCTAssertTrue(1436 == [delegate->progressEvents[3] intValue]);
+
+    XCTAssertTrue(2 == [delegate->fileInfos count], @"Expected 2 files");
+    unz_file_info info;
+    [delegate->fileInfos[0] getValue:&info];
+    // This test is to ensure that ZipArchive 2.x keeps support of `dos_date` instead of `dosDate`, despite the legacy name at:
+    // https://github.com/madler/zlib/blame/643e17b7498d12ab8d15565662880579692f769d/contrib/minizip/unzip.h#L138
+    // In ZipArchive 3, we should hide this outdated structure from public.
+    XCTAssertNotEqual(info.dos_date, 0);
 }
 
 
@@ -264,6 +289,7 @@ int twentyMB = 20 * 1024 * 1024;
     
     NSError *error = nil;
     id<SSZipArchiveDelegate> delegate = [ProgressDelegate new];
+    // correct password is "passw0rd", so "passw0rd123" should be incorrect
     BOOL success = [SSZipArchive unzipFileAtPath:zipPath toDestination:outputPath overwrite:YES password:@"passw0rd123" error:&error delegate:delegate];
     XCTAssertFalse(success, @"unzip failure");
     
@@ -275,6 +301,20 @@ int twentyMB = 20 * 1024 * 1024;
     XCTAssertFalse([fileManager fileExistsAtPath:testPath], @"LICENSE not unzipped");
 }
 
+- (void)testUnzippingWithInvalidPassword2 {
+    NSString *zipPath = [[NSBundle bundleForClass:[self class]] pathForResource:@"TestPasswordArchive2" ofType:@"zip"];
+    NSString *outputPath = [self _cachesPath:@"Password"];
+    
+    NSError *error = nil;
+    id<SSZipArchiveDelegate> delegate = [ProgressDelegate new];
+    // correct password is "aaabbb", so "1989" should be incorrect
+    BOOL success = [SSZipArchive unzipFileAtPath:zipPath toDestination:outputPath overwrite:YES password:@"1989" error:&error delegate:delegate];
+    XCTAssertFalse(success, @"unzip failure");
+    
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *testPath = [outputPath stringByAppendingPathComponent:@"test.txt"];
+    XCTAssertFalse([fileManager fileExistsAtPath:testPath], @"test.txt not unzipped");
+}
 
 - (void)testIsPasswordInvalidForArchiveAtPath {
     NSString *zipPath = [[NSBundle bundleForClass:[self class]] pathForResource:@"TestPasswordArchive" ofType:@"zip"];
@@ -287,6 +327,20 @@ int twentyMB = 20 * 1024 * 1024;
     
     BOOL fileHasInvalidValidPassword = [SSZipArchive isPasswordValidForArchiveAtPath:zipPath password:@"passw0rd123" error:&error];
     
+    XCTAssertFalse(fileHasInvalidValidPassword, @"Invalid password reports true.");
+}
+
+- (void)testIsPasswordInvalidForArchiveAtPath2 {
+    NSString *zipPath = [[NSBundle bundleForClass:[self class]] pathForResource:@"TestPasswordArchive2" ofType:@"zip"];
+
+    NSError *error = nil;
+
+    BOOL fileHasValidPassword = [SSZipArchive isPasswordValidForArchiveAtPath:zipPath password:@"aaabbb" error:&error];
+
+    XCTAssertTrue(fileHasValidPassword, @"Valid password reports false.");
+
+    BOOL fileHasInvalidValidPassword = [SSZipArchive isPasswordValidForArchiveAtPath:zipPath password:@"1989" error:&error];
+
     XCTAssertFalse(fileHasInvalidValidPassword, @"Invalid password reports true.");
 }
 
@@ -312,7 +366,7 @@ int twentyMB = 20 * 1024 * 1024;
 
 - (void)testZippingAndUnzippingWithUnicodePassword {
     
-    /********** Zipping ********/
+    /**** Zipping **/
     
     // use extracted files from [-testUnzipping]
     [self testUnzipping];
@@ -328,7 +382,7 @@ int twentyMB = 20 * 1024 * 1024;
     XCTAssertTrue(success, @"create zip failure");
     XCTAssertTrue([[NSFileManager defaultManager] fileExistsAtPath:archivePath], @"Archive created");
     
-    /********** Unzipping ********/
+    /**** Unzipping **/
     
     outputPath = [self _cachesPath:@"UnicodePassword"];
     
@@ -571,8 +625,7 @@ int twentyMB = 20 * 1024 * 1024;
     // File we're going to test permissions on before and after zipping
     NSString *targetFile = @"/Contents/MacOS/TestProject";
 
-
-    /********** Zipping ********/
+    /**** Zipping **/
 
     // The .app file we're going to zip up
     NSString *inputFile = [[NSBundle bundleForClass: [self class]] pathForResource:@"PermissionsTestApp" ofType:@"app"];
@@ -592,7 +645,7 @@ int twentyMB = 20 * 1024 * 1024;
     BOOL success = [SSZipArchive createZipFileAtPath:archivePath withContentsOfDirectory:inputFile];
     XCTAssertTrue(success, @"create zip failure");
 
-    /********** Un-zipping *******/
+    /**** Un-zipping **/
 
     // Using this newly created zip file, unzip it
     success = [SSZipArchive unzipFileAtPath:archivePath toDestination:outputDir];
@@ -705,6 +758,66 @@ int twentyMB = 20 * 1024 * 1024;
         //NSLog(@"%@", str);
         XCTAssertTrue([tests[str] isEqualToString:[str _sanitizedPath]], @"Path should be sanitized for traversal");
     }
+}
+
+- (void)testDateSanitation {
+    NSCalendar *gregorian = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+    NSDateComponents *components = [[NSDateComponents alloc] init];
+    struct tm ptm;
+
+    /* Test min date is in year 1979 */
+
+    UInt32 dos_date_min = 1;
+    NSDate *minDate = [SSZipArchive _dateWithMSDOSFormat:dos_date_min];
+
+    components.year = 1979;
+    components.month = 11;
+    components.day = 30;
+    components.hour = 0;
+    components.minute = 0;
+    components.second = 2;
+    NSDate *gregorianMinDate = [gregorian dateFromComponents:components];
+    XCTAssertEqual(minDate, gregorianMinDate);
+
+    /* Test our implementation is equivalent to `[NSDate dateWithTimeIntervalSince1970:mz_zip_dosdate_to_time_t(msdosDateTime)]` */
+
+    // copy of mz_zip_dosdate_to_time_t implementation
+    uint64_t date_min = (uint64_t)(dos_date_min >> 16);
+    ptm.tm_mday  = (int16_t)(date_min & 0x1f);
+    ptm.tm_mon   = (int16_t)(((date_min & 0x1E0) / 0x20) - 1);
+    ptm.tm_year  = (int16_t)(((date_min & 0x0FE00) / 0x0200) + 80);
+    ptm.tm_hour  = (int16_t)((dos_date_min & 0xF800) / 0x800);
+    ptm.tm_min   = (int16_t)((dos_date_min & 0x7E0) / 0x20);
+    ptm.tm_sec   = (int16_t)(2 * (dos_date_min & 0x1f));
+    ptm.tm_isdst = -1;
+    XCTAssertEqual(minDate, [NSDate dateWithTimeIntervalSince1970:mktime(&ptm)]);
+
+    /* Test max date is in year 2108 */
+
+    UInt32 dos_date_max = -1;
+    NSDate *maxDate = [SSZipArchive _dateWithMSDOSFormat:dos_date_max];
+
+    components.year = 2108;
+    components.month = 4;
+    components.day = 1;
+    components.hour = 8;
+    components.minute = 4;
+    components.second = 2;
+    NSDate *gregorianMaxDate = [gregorian dateFromComponents:components];
+    XCTAssertEqual(maxDate, gregorianMaxDate);
+
+    /* Test our implementation is equivalent to `[NSDate dateWithTimeIntervalSince1970:mz_zip_dosdate_to_time_t(msdosDateTime)]` */
+
+    // copy of mz_zip_dosdate_to_time_t implementation
+    uint64_t date_max = (uint64_t)(dos_date_max >> 16);
+    ptm.tm_mday  = (int16_t)(date_max & 0x1f);
+    ptm.tm_mon   = (int16_t)(((date_max & 0x1E0) / 0x20) - 1);
+    ptm.tm_year  = (int16_t)(((date_max & 0x0FE00) / 0x0200) + 80);
+    ptm.tm_hour  = (int16_t)((dos_date_max & 0xF800) / 0x800);
+    ptm.tm_min   = (int16_t)((dos_date_max & 0x7E0) / 0x20);
+    ptm.tm_sec   = (int16_t)(2 * (dos_date_max & 0x1f));
+    ptm.tm_isdst = -1;
+    XCTAssertEqual(maxDate, [NSDate dateWithTimeIntervalSince1970:mktime(&ptm)]);
 }
 
 // This tests whether the payload size of the zip file containing 4.8Gb of files with compression 0 is correct,
@@ -840,7 +953,7 @@ int twentyMB = 20 * 1024 * 1024;
 
 #pragma mark - Private
 
-// Returns 20Mb of data
+/// Returns 20Mb of data
 -(NSData*)get20MbNSData {
     NSMutableData* theData = [NSMutableData dataWithCapacity:twentyMB];
     for (long long int i = 0; i < twentyMB/4; i++) {
@@ -880,6 +993,5 @@ int twentyMB = 20 * 1024 * 1024;
     }
 
     return [ms copy];
-
 }
 @end

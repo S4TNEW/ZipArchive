@@ -11,7 +11,7 @@ let package = Package(
         .macOS(.v10_15),
         .visionOS("1.0"),
         .watchOS("8.4"),
-        .macCatalyst("13.0")
+        .macCatalyst("13.0"),
     ],
     products: [
         .library(name: "ZipArchive", targets: ["ZipArchive"]),
@@ -23,13 +23,15 @@ let package = Package(
             resources: [
                 .process("Supporting Files/PrivacyInfo.xcprivacy")],
             cSettings: [
-            	.define("HAVE_ARC4RANDOM_BUF"),
+                .define("HAVE_ARC4RANDOM_BUF"),
+                .define("HAVE_ICONV"),
                 .define("HAVE_INTTYPES_H"),
                 .define("HAVE_PKCRYPT"),
                 .define("HAVE_STDINT_H"),
                 .define("HAVE_WZAES"),
                 .define("HAVE_ZLIB"),
-                .define("ZLIB_COMPAT")
+                .define("ZLIB_COMPAT"),
+                .headerSearchPath("minizip"),
             ],
             linkerSettings: [
                 .linkedLibrary("z"),
